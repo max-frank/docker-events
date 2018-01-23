@@ -7,7 +7,11 @@ gMonKey.patch_all()
 
 # pylama: ignore=E402
 import inspect
-from itertools import imap
+try:
+    from itertools import imap
+except ImportError:
+    # Python 3...
+    imap=map
 import logging
 import logging.config
 
