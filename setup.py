@@ -65,7 +65,7 @@ setup(
     },
 
     install_requires=[
-        'docker-py',
+        'docker',
         'requests>2.1.0',
         'click',
         'python-etcd',
