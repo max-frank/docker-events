@@ -53,9 +53,9 @@ def loop(sock, config=None):
     for container in client.containers.list():
         event_data = {
             'status': "running",
-            'id': container['Id'],
-            'from': container['Image'],
-            'time': container['Created'],
+            'id': container.attrs['Id'],
+            'from': container.attrs['Image'],
+            'time': container.attrs['Created'],
         }
 
         LOG.debug("incomming event: %s", event_data)
