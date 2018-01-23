@@ -50,7 +50,7 @@ def loop(sock, config=None):
     client = docker.DockerClient(base_url=sock)
 
     # fake a running event for all running containers
-    for container in client.containers():
+    for container in client.containers.list():
         event_data = {
             'status': "running",
             'id': container['Id'],
