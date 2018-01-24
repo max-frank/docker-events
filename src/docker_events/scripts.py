@@ -63,7 +63,7 @@ def loop(sock, config=None):
         callbacks = event.filter_callbacks(client, event_data)
 
         # spawn all callbacks
-        gevent.joinall([gevent.spawn(cb, event_data, config) for cb in callbacks])
+        gevent.joinall([gevent.spawn(cb, client, event_data, config) for cb in callbacks])
 
     # listen for further events
     for raw_data in client.events():
