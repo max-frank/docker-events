@@ -65,6 +65,16 @@ class event(object):
 
 
 @event
+def startup(client, event_data):
+    return event_data.get('status') == 'docker_events.startup'
+
+
+@event
+def shutdown(client, event_data):
+    return event_data.get('status') == 'docker_events.shutdown'
+
+
+@event
 def pull(client, event_data):
     return event_data.get('status') == 'pull'
 

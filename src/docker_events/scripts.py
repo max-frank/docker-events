@@ -1,6 +1,8 @@
 """The CLI to start listen on docker events."""
 
 import gevent
+import gevent.pool
+import gevent.queue
 import gevent.monkey as gMonKey
 
 gMonKey.patch_all()
@@ -34,48 +36,6 @@ def setup_logging(logging_config, debug=False):
 
     else:
         logging.basicConfig(level=debug and logging.DEBUG or logging.ERROR)
-
-
-def loop(sock, config=None):
-
-    """Loops over all docker events and executes subscribed callbacks with an
-    optional config value.
-
-    :param config: a dictionary with external config values
-    """
-
-    if config is None:
-        config = {}
-
-    client = docker.DockerClient(base_url=sock)
-
-    # fake a running event for all running containers
-    for container in client.containers.list():
-        event_data = {
-            'status': "running",
-            'id': container.attrs['Id'],
-            'from': container.attrs['Image'],
-            'time': container.attrs['Created'],
-        }
-
-        LOG.debug("incomming event: %s", event_data)
-
-        callbacks = event.filter_callbacks(client, event_data)
-
-        # spawn all callbacks
-        gevent.joinall([gevent.spawn(cb, client, event_data, config) for cb in callbacks])
-
-    # listen for further events
-    for raw_data in client.events():
-
-        event_data = json.loads(raw_data)
-
-        LOG.debug("incomming event: %s", event_data)
-
-        callbacks = event.filter_callbacks(client, event_data)
-
-        # spawn all callbacks
-        gevent.joinall([gevent.spawn(cb, client, event_data, config) for cb in callbacks])
 
 
 def join_configs(configs):
@@ -117,6 +77,81 @@ def summarize_events():
             LOG.info("subscribed to %s by %s", ev, ', '.join(imap(repr, ev.callbacks)))
 
 
+class DockerEvents(gevent.Greenlet):
+    def __init__(self, docker_base_url, config, logger=None):
+        super().__init__()
+        self.client = docker.DockerClient(base_url=docker_base_url)
+        self.config = config
+        self.log = logger or logging.getLogger(__name__)
+        self.greenlets = gevent.pool.Group()
+        self.events = gevent.queue.Queue(0)
+        self._keep_going = True
+
+    def _run(self):
+        self.log.info('Starting {0}'.format(
+            self.__class__.__name__
+        ))
+
+        # Startup event for handler initialization.
+        self.dispatch_event({
+            'status': 'docker_events.startup',
+            'id': None,
+            'from': None,
+            'time': None,
+        })
+
+        self.greenlets.spawn(self.__collect)
+        self.greenlets.spawn(self.__dispatch)
+
+        # Fake a 'running' event for all running containers.
+        for container in self.client.containers.list():
+            event_data = {
+                'status': 'running',
+                'id': container.attrs['Id'],
+                'from': container.attrs['Image'],
+                'time': container.attrs['Created'],
+            }
+            self.events.put(event_data)
+
+        self.greenlets.join()
+
+    def stop(self):
+        self.log.info('Stopping {0}'.format(
+            self.__class__.__name__,
+        ))
+        self._keep_going = False
+        self.greenlets.kill()
+
+        # Shutdown event for handlers.
+        self.dispatch_event({
+            'status': 'docker_events.shutdown',
+            'id': None,
+            'from': None,
+            'time': None,
+        })
+
+        self.kill()
+
+    def __collect(self):
+        while self._keep_going:
+            for event_data in self.client.events(decode=True):
+                #self.log.debug('incomming event: %s', event_data)
+                self.events.put(event_data)
+                gevent.sleep()
+
+    def __dispatch(self):
+        while self._keep_going:
+            event_data = self.events.get()
+            self.dispatch_event(event_data)
+            gevent.sleep()
+
+    def dispatch_event(self, event_data):
+        self.log.debug('dispatching event: %s', event_data)
+        callbacks = event.filter_callbacks(self.client, event_data)
+        for callback in event.filter_callbacks(self.client, event_data):
+            self.greenlets.add(gevent.spawn(callback, self.client, event_data, self.config))
+
+
 @click.command()
 @click.option("--sock", "-s",
               default="unix://var/run/docker.sock",
@@ -153,6 +188,11 @@ def cli(sock, configs, modules, files, log, debug):
     # summarize active events and callbacks
     summarize_events()
 
-    gloop = gevent.Greenlet.spawn(loop, sock=sock, config=config)
-    gloop.start()
-    gloop.join()
+    server = DockerEvents(sock, config=config)
+    try:
+        server.start()
+        server.join()
+    except KeyboardInterrupt:
+        pass # Press Ctrl+C to stop
+    finally:
+        server.stop()
