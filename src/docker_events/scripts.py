@@ -25,17 +25,19 @@ import simplejson as json
 from . import event
 
 
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger('docker_events')
 
 
-def setup_logging(logging_config, debug=False):
+def setup_logging(logging_config, log_level=None):
     """Setup logging config."""
 
     if logging_config is not None:
         logging.config.fileConfig(logging_config)
-
     else:
-        logging.basicConfig(level=debug and logging.DEBUG or logging.ERROR)
+        logging.basicConfig(level=logging.ERROR, format='%(levelname)s: %(name)s: %(message)s')
+    if log_level:
+        root_logger = logging.getLogger()
+        root_logger.setLevel(getattr(logging, log_level.upper()))
 
 
 def join_configs(configs):
@@ -82,7 +84,7 @@ class DockerEvents(gevent.Greenlet):
         super().__init__()
         self.client = docker.DockerClient(base_url=docker_base_url)
         self.config = config
-        self.log = logger or logging.getLogger(__name__)
+        self.log = logger or logging.getLogger('docker_events')
         self.greenlets = gevent.pool.Group()
         self.events = gevent.queue.Queue(0)
         self._keep_going = True
@@ -170,12 +172,12 @@ class DockerEvents(gevent.Greenlet):
 @click.option("--log", "-l",
               type=click.Path(exists=True),
               help="logging config")
-@click.option("--debug", is_flag=True,
-              help="enable debug log level")
-def cli(sock, configs, modules, files, log, debug):
+@click.option('--verbose', '-v', 'log_level', flag_value='info', help='set log level to info', envvar='DOCKER_EVENTS_LOG_LEVEL')
+@click.option('--debug', '-d', 'log_level', flag_value='debug', help='set log level to debug', envvar='DOCKER_EVENTS_LOG_LEVEL')
+def cli(sock, configs, modules, files, log, log_level):
     """The CLI."""
 
-    setup_logging(log, debug)
+    setup_logging(log, log_level)
 
     config = join_configs(configs)
 
