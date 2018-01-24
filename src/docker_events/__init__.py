@@ -92,3 +92,9 @@ def stop(client, event_data):
 @event
 def destroy(client, event_data):
     return event_data.get('status') == 'destroy'
+
+
+@event
+def running(client, event_data):
+    return event_data.get('status') == 'running'
+
