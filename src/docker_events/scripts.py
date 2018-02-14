@@ -17,6 +17,8 @@ except ImportError:
 import logging
 import logging.config
 
+import sys
+import os
 import click
 import docker
 import yaml
@@ -24,6 +26,19 @@ import simplejson as json
 
 from . import event
 
+
+if sys.version_info[:2] >= (3, 3):
+    from importlib.machinery import SourceFileLoader
+    def load_source(name, path):
+        if not os.path.exists(path):
+            return {}
+        return vars(SourceFileLoader(name, path).load_module())
+else:
+    import imp
+    def load_source(name, path):
+        if not os.path.exists(path):
+            return {}
+        return vars(imp.load_source(name, path))
 
 LOG = logging.getLogger('docker_events')
 
@@ -67,8 +82,8 @@ def load_files(files):
     """Load and execute a python file."""
 
     for py_file in files:
-        LOG.debug("exec %s", py_file)
-        execfile(py_file, globals(), locals())
+        LOG.debug("load source %s", py_file)
+        load_source(py_file[:-3],py_file)
 
 
 def summarize_events():
