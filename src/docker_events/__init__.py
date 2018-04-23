@@ -73,6 +73,13 @@ def startup(client, event_data):
 def shutdown(client, event_data):
     return event_data.get('status') == 'docker_events.shutdown'
 
+@event
+def network_create(client, event_data):
+    return event_data.get('Action') == 'create' and event_data.get('Type') == 'network'
+
+@event
+def network_delete(client, event_data):
+    return event_data.get('Action') == 'destroy' and event_data.get('Type') == 'network'
 
 @event
 def pull(client, event_data):
@@ -107,4 +114,3 @@ def destroy(client, event_data):
 @event
 def running(client, event_data):
     return event_data.get('status') == 'running'
-
